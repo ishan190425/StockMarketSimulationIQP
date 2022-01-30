@@ -3,17 +3,12 @@
 import tensorflow
 from tensorflow.keras.preprocessing import timeseries_dataset_from_array
 from numpy import genfromtxt
+import argparse
+from config import *
 
-labels_file_name = "best_stock_per_day_labels.csv"
-mother_file_name = "mother_file.csv"
-training_labels_file_name = "labels_training_50_50.csv"
-testing_labels_file_name = "labels_testing_50_50.csv"
-training_1_hidden_layer_file = "training_2_stocks_1_hidden_layer_accuracy.csv"
-testing_1_hidden_layer_file = "testing_2_stocks_1_hidden_layer_accuracy.csv"
-#savedModelFile = 'model_8000.h5'
-savedModelFile = 'model_2_stocks_8000.h5'
+training_1_hidden_layer_accuracy_file = "training_2_stocks_1_hidden_layer_accuracy.csv"
+testing_1_hidden_layer_accuracy_file = "testing_2_stocks_1_hidden_layer_accuracy.csv"
 batch_size = 128
-days_to_train_on = 30
 parameters_per_day = 5
 sequence_stride = 2 # Use every other dataset(Shift 2 days over)
 training_start_index = 0
@@ -22,14 +17,14 @@ testing_start_index = 1 # Start on alternate than training.
 def split_training_and_testing_data():
     global num_stocks
     global one_day_data_size
-    print("Flattening dataset")
-    full_dataset = genfromtxt(mother_file_name, delimiter=',')
+    print("Retrieving dataset from mother file")
+    full_dataset = genfromtxt(mother_file, delimiter=',')
     print("Full dataset length = " + str(len(full_dataset)))
     one_day_data_size = len(full_dataset[0])
     print("one_day_data_size = " + str(one_day_data_size))
     num_stocks = one_day_data_size//parameters_per_day
     print("num_stocks = " + str(num_stocks))
-    labels = genfromtxt(labels_file_name, delimiter=',').flatten()
+    labels = genfromtxt(labels_file, delimiter=',').flatten()
     labels_one_hot = tensorflow.keras.utils.to_categorical(labels, num_classes=num_stocks)
     print("About to assemble data set generators")
     end_index = len(full_dataset) - 1
@@ -75,8 +70,8 @@ def make_new_nn_model_1_hidden_layer():
 #505 #Softmax 1 hot
 
 def train_and_predict(epochs, nn_model, training_generator, testing_generator):
-    with open(training_1_hidden_layer_file, 'a') as training_1_hidden_layer_handle:
-        with open(testing_1_hidden_layer_file, 'a') as testing_1_hidden_layer_handle:
+    with open(training_1_hidden_layer_accuracy_file, 'w') as training_1_hidden_layer_handle:
+        with open(testing_1_hidden_layer_accuracy_file, 'w') as testing_1_hidden_layer_handle:
             for i in range (1, epochs + 1):
                 nn_model.fit(training_generator, epochs=1, verbose=0)
                 _, training_accuracy = nn_model.evaluate(training_generator, verbose=0)
@@ -89,11 +84,25 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator):
     _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=1)
     print('For Epochs = {}: Accuracy = {}'.format(epochs, testing_accuracy * 100.0))
     
-def main(epochs = 100):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--epochs', default = 100)
+    parser.add_argument('--model_file', default = None)
+    parser.add_argument('--save_to_file', default = None)
+    args = parser.parse_args()
+    epochs = int(args.epochs)
+    model_file = args.model_file
+    save_to_file = args.save_to_file
     training_generator, testing_generator = split_training_and_testing_data()
-    nn_model = make_new_nn_model_1_hidden_layer()
-    #nn_model = tensorflow.keras.models.load_model(savedModelFile)
+    if None == model_file:
+        print("Making new model")
+        nn_model = make_new_nn_model_1_hidden_layer()
+    else:
+        print("Making model from file: " + model_file)
+        nn_model = tensorflow.keras.models.load_model(model_file)
     train_and_predict(epochs, nn_model, training_generator, testing_generator)
-    #nn_model.save(savedModelFile)
+    if None != save_to_file:
+        print("Saving model to file: " + save_to_file)
+        nn_model.save(save_to_file)
 
 main()

@@ -2,13 +2,9 @@
 
 import pandas as pd
 import csv
+from config import *
 
-mother_file_name = "mother_file.csv"
-label_file_name = "best_stock_per_day_labels.csv"
-human_readable_label_file_name = "human_readable_best_stock_per_day_labels.csv"
-clean_directory = "clean_30y_stock_csvs"
-#stock_symbols_csv_file = "500_Stocks.csv"
-stock_symbols_csv_file = "2_Stocks.csv"
+human_readable_labels_file = "human_readable_" + labels_file
 
 class ProblematicStockDataInfo:
     # The only known problem thus far is that the opening price is zero.
@@ -38,7 +34,7 @@ def fill_labels_file():
         clean_csv_reader = csv.reader(clean_csv_handle, delimiter=',')
         try:
             headers = next(clean_csv_reader)
-            for i in range(0,30):
+            for i in range(0, days_to_train_on):
                 next(clean_csv_reader)
         except csv.Error:
             print("CSV Error in " + csv_file)
@@ -51,13 +47,13 @@ def fill_labels_file():
             continue
         clean_csv_handle_array.append(clean_csv_handle)
         clean_csv_reader_array.append(clean_csv_reader)
-    with open(label_file_name, 'w') as label_file_handle:
-        with open(human_readable_label_file_name, 'w') as human_readable_label_file_handle:
-            human_readable_label_file_handle.write("Datetime,Index,Symbol,Percent Gain\n")
-            done_writing_label_file = False
+    with open(labels_file, 'w') as labels_file_handle:
+        with open(human_readable_labels_file, 'w') as human_readable_labels_file_handle:
+            human_readable_labels_file_handle.write("Datetime,Index,Symbol,Percent Gain\n")
+            done_writing_labels_file = False
             rows_read = 0
             problematic_dictionary = {}
-            while not done_writing_label_file:
+            while not done_writing_labels_file:
                 highest_percentage_increase = None
                 best_stock_code = None
                 best_stock_symbol = None
@@ -70,10 +66,10 @@ def fill_labels_file():
                         current_row = next(clean_csv_reader) # Read the header line of the csv to set up to read data.
                     except csv.Error:
                         print("Quit due to: CSV Error in " + clean_csv_file_name)
-                        done_writing_label_file = True # Quit due to error.
+                        done_writing_labels_file = True # Quit due to error.
                         break
                     except StopIteration:
-                        done_writing_label_file = True # Finished reading file.
+                        done_writing_labels_file = True # Finished reading file.
                         break
                     if None == current_date:
                         current_date = current_row[0]
@@ -95,22 +91,22 @@ def fill_labels_file():
                         highest_percentage_increase = current_percentage_increase
                         best_stock_code = str(handle_index-1) # We already incremented the handle index.
                         best_stock_symbol = (((clean_csv_file_name.split("/"))[-1]).split(".csv"))[0]
-                if not done_writing_label_file:
-                    label_file_handle.write(best_stock_code + "\n")
-                    human_readable_label_file_handle.write(current_date +
+                if not done_writing_labels_file:
+                    labels_file_handle.write(best_stock_code + "\n")
+                    human_readable_labels_file_handle.write(current_date +
                                                            "," + best_stock_code +
                                                            "," + best_stock_symbol +
                                                            "," + str(highest_percentage_increase) +
                                                            "\n")
                     print(".", end="", flush=True)
                     rows_read += 1
-                    label_file_handle.flush()
+                    labels_file_handle.flush()
     for clean_csv_handle in clean_csv_handle_array:
         assert not clean_csv_handle.readline()
         clean_csv_handle.close()
     for _, problematic_stock_data_info in problematic_dictionary.items():
         problematic_stock_data_info.print_problematic_info()
-    print("Rows read: " + str(rows_read))
+    print("Rows read for labels file: " + str(rows_read) + " (The first " + str(days_to_train_on) + " days do not get labels)")
 
 def fill_mother_file():
     stocks = pd.read_csv(stock_symbols_csv_file)
@@ -123,7 +119,7 @@ def fill_mother_file():
             print("Empty file not used: " + symbol)
             continue
         clean_csv_handle_array.append(clean_csv_handle)
-    with open(mother_file_name, 'w') as mother_file_handle:
+    with open(mother_file, 'w') as mother_file_handle:
         done_writing_mother_file = False
         first_comma_index = None
         rows_read = 0
@@ -144,16 +140,19 @@ def fill_mother_file():
                 mother_file_handle.write(current_row_data)
             if not done_writing_mother_file:
                 mother_file_handle.write("\n")
-                print(current_row[8:10], end=",")
+                #print(current_row[8:10], end=",")
+                print(".", end="", flush=True)
                 rows_read += 1
             mother_file_handle.flush()
     for clean_csv_handle in clean_csv_handle_array:
         assert not clean_csv_handle.readline()
         clean_csv_handle.close()
-    print("Rows read: " + str(rows_read))
+    print("\nRows read for mother file: " + str(rows_read))
         
 def main():
+    print("Filling in the mother file")
     fill_mother_file()
+    print("Filling in the labels file")
     fill_labels_file()
 
 main()
