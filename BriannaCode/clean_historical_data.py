@@ -3,12 +3,8 @@
 import pandas as pd
 from datetime import datetime, timedelta
 import csv
+from config import *
 
-#raw_directory = "trying_without_indicies_30y_stock_csvs"
-#clean_directory = "trying_without_indicies_clean_30y_stock_csvs"
-raw_directory = "30y_stock_csvs"
-clean_directory = "clean_30y_stock_csvs"
-stock_symbols_csv_file = "500_Stocks.csv"
 date_format_string = "%Y-%m-%d %H:%M:%S"
 one_day_duration = timedelta(1)
 
@@ -26,7 +22,7 @@ def get_list_of_all_dates():
     dates_dict = {}
     stocks = pd.read_csv(stock_symbols_csv_file)
     for symbol in stocks.Symbol:
-        #print(symbol)
+        print(".", end="", flush=True)
         path_to_raw_csv_file = raw_directory + "/" + symbol + ".csv"
         stock_records = pd.read_csv(path_to_raw_csv_file)
         for date in stock_records.Datetime:
@@ -38,13 +34,13 @@ def get_list_of_all_dates():
             else:
                 dates_dict[date] = date_seen_count + 1
     complete_date_list = sorted(dates_dict)
-    print(complete_date_list)
+    #print(complete_date_list) # Uncomment this if you would like to see all of the dates in order.
     return complete_date_list
 
 def add_dummy_values_for_missing_dates(complete_date_list):
     stocks = pd.read_csv(stock_symbols_csv_file)
     for symbol in stocks.Symbol:
-        print(symbol)
+        print(".", end="", flush=True)
         symbol_csv_base = "/" + symbol + ".csv"
         path_to_raw_csv_file = raw_directory + symbol_csv_base
         with open(path_to_raw_csv_file, 'r') as raw_csv_handle:
@@ -91,8 +87,9 @@ def create_and_write_dummy_row(current_row, required_date, clean_csv_writer):
     clean_csv_writer.writerow(dummy_row)
     
 def main():
+    print("Accumulating complete date list")
     complete_date_list = get_list_of_all_dates()
-    print(len(complete_date_list))
+    print("\nAdding dummy variables for missing dates")
     add_dummy_values_for_missing_dates(complete_date_list)
 
 main()
