@@ -4,10 +4,11 @@ import tensorflow
 from tensorflow.keras.preprocessing import timeseries_dataset_from_array
 from numpy import genfromtxt
 import argparse
+from tensorflow.keras.optimizers import SGD
 from config import *
 
-training_1_hidden_layer_accuracy_file = "training_2_stocks_1_hidden_layer_accuracy.csv"
-testing_1_hidden_layer_accuracy_file = "testing_2_stocks_1_hidden_layer_accuracy.csv"
+training_accuracy_file = "training_accuracy.csv"
+testing_accuracy_file = "testing_accuracy.csv"
 batch_size = 128
 parameters_per_day = 5
 sequence_stride = 2 # Use every other dataset(Shift 2 days over)
@@ -63,6 +64,25 @@ def make_new_nn_model_1_hidden_layer():
     print("Finished compiling")
     return nn_model
 
+def make_new_cnn_model():
+    print("About to build model")
+    convolution_parameters_per_day = (parameters_per_day // 2) + 1
+    convolution_parameters_per_30_days = (convolution_parameters_per_day // 2) + 1
+    nn_model = tensorflow.keras.models.Sequential()
+    nn_model.add(tensorflow.keras.Input(shape=(days_to_train_on, one_day_data_size, 1)))
+    nn_model.add(tensorflow.keras.layers.Conv2D(filters=convolution_parameters_per_day, kernel_size=(1, parameters_per_day), strides=(1, parameters_per_day), activation='relu'))
+    nn_model.add(tensorflow.keras.layers.Reshape((days_to_train_on, convolution_parameters_per_day * num_stocks, 1)))
+    nn_model.add(tensorflow.keras.layers.Conv2D(filters=convolution_parameters_per_30_days, kernel_size=(days_to_train_on, convolution_parameters_per_day), strides=(1, convolution_parameters_per_day), activation='relu'))
+    nn_model.add(tensorflow.keras.layers.Flatten())
+    nn_model.add(tensorflow.keras.layers.Dense(num_stocks, activation='softmax'))
+    print("Finished building model")
+    print(nn_model.summary())
+    print("About to compile")
+    optimizer = SGD(lr=0.1)
+    nn_model.compile(optimizer=optimizer, loss='mse', metrics=['accuracy'], run_eagerly=True)
+    print("Finished compiling")
+    return nn_model
+
 #2 hidden layer idea:
 #75750 #Original dimensions
 #7600 #Dense
@@ -70,16 +90,16 @@ def make_new_nn_model_1_hidden_layer():
 #505 #Softmax 1 hot
 
 def train_and_predict(epochs, nn_model, training_generator, testing_generator):
-    with open(training_1_hidden_layer_accuracy_file, 'w') as training_1_hidden_layer_handle:
-        with open(testing_1_hidden_layer_accuracy_file, 'w') as testing_1_hidden_layer_handle:
+    with open(training_accuracy_file, 'w') as training_handle:
+        with open(testing_accuracy_file, 'w') as testing_handle:
             for i in range (1, epochs + 1):
                 nn_model.fit(training_generator, epochs=1, verbose=0)
                 _, training_accuracy = nn_model.evaluate(training_generator, verbose=0)
-                training_1_hidden_layer_handle.write(str(training_accuracy) + ",")
-                training_1_hidden_layer_handle.flush()
+                training_handle.write(str(training_accuracy) + ",")
+                training_handle.flush()
                 _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=0)
-                testing_1_hidden_layer_handle.write(str(testing_accuracy) + ",")
-                testing_1_hidden_layer_handle.flush()
+                testing_handle.write(str(testing_accuracy) + ",")
+                testing_handle.flush()
                 print(".", end="", flush=True)
     _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=1)
     print('For Epochs = {}: Accuracy = {}'.format(epochs, testing_accuracy * 100.0))
@@ -96,7 +116,7 @@ def main():
     training_generator, testing_generator = split_training_and_testing_data()
     if None == model_file:
         print("Making new model")
-        nn_model = make_new_nn_model_1_hidden_layer()
+        nn_model = make_new_cnn_model()
     else:
         print("Making model from file: " + model_file)
         nn_model = tensorflow.keras.models.load_model(model_file)
