@@ -154,6 +154,7 @@ def trade(symbol):
     print(round(TotalReturn,2))
     print()
     return round(TotalReturn,2)
+
 def main():
     f = []
     money = {}
@@ -163,9 +164,11 @@ def main():
     
     for stock in f:
         money[stock] = trade(stock)
+
     sum = 0
     for s in money:
         sum+= money[s]
+        
     print(sum)
 
 if __name__ =='__main__':
