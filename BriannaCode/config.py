@@ -1,5 +1,5 @@
 # Replace the following with your own User Agent
-User_Agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
+User_Agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.2 Safari/605.1.15"
 
 # File containing Name, Symbol data for all stocks you would like to fetch.
 stock_symbols_csv_file = "500_Stocks.csv"
