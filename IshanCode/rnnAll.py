@@ -7,6 +7,7 @@
 
 # %%
 import csv
+import os
 from os import walk
 import tensorflow as tf
 import numpy as np
@@ -20,14 +21,15 @@ from tensorflow.keras.layers import Dropout
 from tensorflow.keras.layers import Flatten
 import talib as ta
 
-
+padding = "--------------------------------"
 # %% [markdown]
 # ## Import training set
 def rnn(stock):# %%
     rsiPeriod = 14
     adxPeriod = 14
     bollingerBandWindow = 20
-    
+    shift = 1
+    leftshift = 33
     window = 60
 
     # %%
@@ -35,8 +37,10 @@ def rnn(stock):# %%
     numberOfFeatures = len(variablesToInclude)
     numberOfFeatures
 
+    dataPath = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/Datasets/30y_stock_csvs"
+
     # %%
-    dataTrain = pd.read_csv("/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/BriannaCode/30y_stock_csvs/{}.csv".format(stock)) #import csv
+    dataTrain = pd.read_csv("{}/{}.csv".format(dataPath,stock)) #import csv
     
     trainingDataPoints = round(len(dataTrain) * .4)
     if trainingDataPoints < 93:
@@ -51,7 +55,7 @@ def rnn(stock):# %%
 
     dataTrain['Close'] = dataTrain['Close'].astype(float).fillna(0)
     data = dataTrain['Close']
-    dataTrain['Close'][1:] = dataTrain['Close'][0:-1]
+
     dataTrain["RSI"] = ta.RSI(dataTrain['Close'],rsiPeriod).fillna(0)
     dataTrain["ADX"] = ta.ADX(dataTrain['High'],dataTrain['Low'],dataTrain['Close'],adxPeriod).fillna(0)
     fastk, fastd = ta.STOCHF(dataTrain['High'],dataTrain['Low'],dataTrain['Close'])
@@ -69,6 +73,7 @@ def rnn(stock):# %%
     # %%
     newTrain = pd.DataFrame()
     newTrain = dataTrain[variablesToInclude]
+    newTrain["Close"] = newTrain['Close'].shift(1)
 
     # %%
 
@@ -92,7 +97,7 @@ def rnn(stock):# %%
     # Look at the 60 previous timesteps to predict this timestep
     xTrain = []
     yTrain = []
-    for i in range(33 + window,trainingDataPoints):
+    for i in range(window+leftshift,trainingDataPoints):
         xTrain.append(scaleTrainingSet[i-window:i])
         yTrain.append(ySCSet[i])
 
@@ -110,52 +115,52 @@ def rnn(stock):# %%
     # %% [markdown]
     # # Part 2 - Build RNN
 
-    # %% [markdown]
+    # %% [markdown]HHhH
+    model = "models/{}-model.json".format(stock)
+    if os.path.isfile("{}/saved_model.pb".format(model)):
+        regressor=tf.keras.models.load_model(model)
+        print("loaded")
+   
+    else:
+        # %%
+        regressor = Sequential()
 
+        # %%
+        regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (xTrain.shape[1],numberOfFeatures))) 
+        regressor.add(Dropout(rate = 0.2))
+        #regressor.add(Dense(units=16,activation = 'relu',input_shape = (xTrain.shape[1],numberOfFeatures)))
 
-    # %%
-    regressor = Sequential()
+        # %%
+        regressor.add(LSTM(units = 50, return_sequences = True)) 
+        regressor.add(Dropout(rate = 0.2))
+        #regressor.add(Dense(units=32,activation = 'relu'))
 
+        # %%
+        regressor.add(LSTM(units = 50, return_sequences = True))
+        regressor.add(Dropout(rate = 0.2))
+        #regressor.add(Dense(units=16,activation = 'relu'))
 
-    # %% [markdown]
-    # ## Adding LSTM layers and some dropout regularization
+        # %%
+        regressor.add(LSTM(units = 50))
+        regressor.add(Dropout(rate = 0.2))
+        # Last Layer
+        regressor.add(Dense(units=1))#output layer, default since this is regression not classfition 
 
-    # %%
-    regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (xTrain.shape[1],numberOfFeatures))) 
-    regressor.add(Dropout(rate = 0.2))
-    #regressor.add(Dense(units=16,activation = 'relu',input_shape = (xTrain.shape[1],numberOfFeatures)))
+        # %% [markdown]
+        # ## Adding output layer
 
-    # %%
-    regressor.add(LSTM(units = 50, return_sequences = True)) 
-    regressor.add(Dropout(rate = 0.2))
-    #regressor.add(Dense(units=32,activation = 'relu'))
+        # %%
+        regressor.compile(optimizer='adam',loss='mean_squared_error',metrics='accuracy')
 
-    # %%
-    regressor.add(LSTM(units = 50, return_sequences = True))
-    regressor.add(Dropout(rate = 0.2))
-    #regressor.add(Dense(units=16,activation = 'relu'))
-
-    # %%
-    regressor.add(LSTM(units = 50))
-    regressor.add(Dropout(rate = 0.2))
-    # Last Layer
-    regressor.add(Dense(units=1))#output layer, default since this is regression not classfition 
-
-    # %% [markdown]
-    # ## Adding output layer
-
-    # %%
-    regressor.compile(optimizer='adam',loss='mean_squared_error',metrics='accuracy')
-
-    # %%
-    regressor.fit(xTrain,yTrain,epochs=100,batch_size=32,verbose=0)
-    
-    regressor.save("models/{}-model.json".format(stock))
+        # %%
+        regressor.fit(xTrain,yTrain,epochs=100,batch_size=32)
+        
+        regressor.save("models/{}-model.json".format(stock))
     # %% [markdown]
     # ## Part 3 - Predictions and visualing the results
 
     # %%
-    dataTest = pd.read_csv("/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/BriannaCode/30y_stock_csvs/{}.csv".format(stock)) #import csv
+    dataTest = pd.read_csv("{}/{}.csv".format(dataPath,stock)) #import csv
     dataTest.rename(columns = {'CLOSE':'Close'}, inplace = True)
     dataTest.rename(columns = {'HIGH':'High'}, inplace = True)
     dataTest.rename(columns = {'LOW':'Low'}, inplace = True)
@@ -164,17 +169,17 @@ def rnn(stock):# %%
     # %%
 
     dataTest = dataTest[trainingDataPoints + 1:]
-    dataTest['CloseEdited'] = dataTest['Close'].astype(float)
-    dataTest["RSI"] = ta.RSI(dataTest['CloseEdited'],rsiPeriod)
-    dataTest["ADX"] = ta.ADX(dataTest['High'],dataTest['Low'],dataTest['CloseEdited'],adxPeriod)
-    fastk, fastd = ta.STOCHF(dataTest['High'],dataTest['Low'],dataTest['CloseEdited'])
+    dataTest['Close'] = dataTest['Close'].astype(float)
+    dataTest["RSI"] = ta.RSI(dataTest['Close'],rsiPeriod)
+    dataTest["ADX"] = ta.ADX(dataTest['High'],dataTest['Low'],dataTest['Close'],adxPeriod)
+    fastk, fastd = ta.STOCHF(dataTest['High'],dataTest['Low'],dataTest['Close'])
     dataTest['fastd'] = fastd
     dataTest['fastk'] = fastk
-    macd, macdsignal, macdhist = ta.MACD(dataTest['CloseEdited'])
+    macd, macdsignal, macdhist = ta.MACD(dataTest['Close'])
     dataTest['macd'] = macd
     dataTest['macdsignal'] = macdsignal
     dataTest['macdhist'] = macdhist
-    upper,middle,lower = ta.BBANDS(dataTest['CloseEdited'])
+    upper,middle,lower = ta.BBANDS(dataTest['Close'])
     dataTest['bb_lowerband'] = lower
     dataTest['bb_middleband'] = middle
     dataTest['bb_upperband'] = upper
@@ -186,22 +191,23 @@ def rnn(stock):# %%
     
 
     # %%
-    trainingSet = newTest.iloc[:,0:numberOfFeatures].values #convert to numpy to train RNN
+
     realStockPrice = dataTest['Close'].values #convert to numpy to train RNN
-    newTest["Close"][1:] = newTest["Close"][0:-1]
-    realStockPrice = realStockPrice[93:]
+    newTest["Close"] = newTest['Close'].shift(1)
+    trainingSet = newTest.iloc[:,0:numberOfFeatures].values #convert to numpy to train RNN
+    realStockPrice = realStockPrice[window-shift:]
 
     # %% [markdown]
     # ## Predict price
 
     # %%
-    datasetTotal = pd.concat((newTrain,newTest),axis=0)
+
     inputs = trainingSet
     inputs = sc.transform(inputs)
 
     # %%
     xTest = []
-    for i in range(33 + window,len(inputs)):
+    for i in range(window+leftshift,len(inputs)):
         xTest.append(inputs[i-window:i])
     xTest = np.array(xTest)
     xTest = np.reshape(xTest, (xTest.shape[0],xTest.shape[1],numberOfFeatures)) #batchsize, inputSize, numberOfFeatures
@@ -223,7 +229,6 @@ def rnn(stock):# %%
     plt.legend()
     plt.savefig('graphs/{}.png'.format(stock))
     plt.figure()
-    plt.close()
 
     # %%
     stocksOwned = {}
@@ -247,20 +252,16 @@ def rnn(stock):# %%
     return profit
 
 
-# %%
+
 companies = []
 stocks = {}
 profit = 0
-data_path = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/BriannaCode/30y_stock_csvs/"
+data_path = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/Datasets/30y_stock_csvs/"
 for (dirpath, dirnames, filenames) in walk(data_path):
     companies.extend(filenames)
     break 
 for company in companies:
-    print("{}\nTraining Company: {}\n{}".format('-----',company[:-4],'-----'))
+    print("{}\nTraining Company: {}\n{}".format(padding,company[:-4],padding))
     stocks[company] = rnn(company[:-4])
     profit += stocks[company]
-field_names = [ 'Company', 'Profit']
-with open('Profits.csv', 'w') as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames = field_names)
-    writer.writeheader()
-    writer.writerows(stocks)
+print(profit)
