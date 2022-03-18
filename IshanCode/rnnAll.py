@@ -6,10 +6,16 @@
 
 
 # %%
+import imp
+import absl.logging
+import warnings
 import csv
 import os
 from os import walk
+from eth_utils import combine_argument_formatters
+from sklearn.metrics import mean_squared_error
 import tensorflow as tf
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -19,12 +25,21 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.layers import Dropout
 from tensorflow.keras.layers import Flatten
+from tensorflow.keras.optimizers import Adam
 import talib as ta
+from pandas.core.common import SettingWithCopyWarning
+warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
+absl.logging.set_verbosity(absl.logging.ERROR)
+import shutil
+import os
+from tqdm import tqdm
+
+
 
 padding = "--------------------------------"
 # %% [markdown]
 # ## Import training set
-def rnn(stock):# %%
+def rnn(stock,lr=0.01, layer1 = 50, layer2 = 50, layer3 = 50, layer4 = 50):# %%
     rsiPeriod = 14
     adxPeriod = 14
     bollingerBandWindow = 20
@@ -41,7 +56,7 @@ def rnn(stock):# %%
 
     # %%
     dataTrain = pd.read_csv("{}/{}.csv".format(dataPath,stock)) #import csv
-    
+    temp = dataTrain
     trainingDataPoints = round(len(dataTrain) * .4)
     if trainingDataPoints < 93:
         return 0
@@ -116,8 +131,8 @@ def rnn(stock):# %%
     # # Part 2 - Build RNN
 
     # %% [markdown]HHhH
-    model = "models/{}-model.json".format(stock)
-    if os.path.isfile("{}/saved_model.pb".format(model)):
+    model = "Best/Models/{}-model.json".format(stock)
+    if False:
         regressor=tf.keras.models.load_model(model)
         print("loaded")
    
@@ -125,24 +140,14 @@ def rnn(stock):# %%
         # %%
         regressor = Sequential()
 
-        # %%
-        regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (xTrain.shape[1],numberOfFeatures))) 
+        regressor.add(LSTM(units = layer1, return_sequences = True, input_shape = (xTrain.shape[1],numberOfFeatures))) 
         regressor.add(Dropout(rate = 0.2))
         #regressor.add(Dense(units=16,activation = 'relu',input_shape = (xTrain.shape[1],numberOfFeatures)))
 
-        # %%
-        regressor.add(LSTM(units = 50, return_sequences = True)) 
+        regressor.add(LSTM(units = layer2))
         regressor.add(Dropout(rate = 0.2))
-        #regressor.add(Dense(units=32,activation = 'relu'))
-
-        # %%
-        regressor.add(LSTM(units = 50, return_sequences = True))
-        regressor.add(Dropout(rate = 0.2))
-        #regressor.add(Dense(units=16,activation = 'relu'))
-
-        # %%
-        regressor.add(LSTM(units = 50))
-        regressor.add(Dropout(rate = 0.2))
+  
+        
         # Last Layer
         regressor.add(Dense(units=1))#output layer, default since this is regression not classfition 
 
@@ -150,17 +155,20 @@ def rnn(stock):# %%
         # ## Adding output layer
 
         # %%
-        regressor.compile(optimizer='adam',loss='mean_squared_error',metrics='accuracy')
+        optimizer = Adam(learning_rate=lr)
+        regressor.compile(optimizer=optimizer, loss='mean_squared_error',
+                          metrics='accuracy')
 
         # %%
-        regressor.fit(xTrain,yTrain,epochs=100,batch_size=32)
+        regressor.fit(xTrain, yTrain, epochs=20, batch_size=32,verbose=0)
         
-        regressor.save("models/{}-model.json".format(stock))
+        regressor.save(
+            "Models-Testing/{}-{}-{}-model.json".format(stock,layer1, layer2))
     # %% [markdown]
     # ## Part 3 - Predictions and visualing the results
 
     # %%
-    dataTest = pd.read_csv("{}/{}.csv".format(dataPath,stock)) #import csv
+    dataTest = temp
     dataTest.rename(columns = {'CLOSE':'Close'}, inplace = True)
     dataTest.rename(columns = {'HIGH':'High'}, inplace = True)
     dataTest.rename(columns = {'LOW':'Low'}, inplace = True)
@@ -195,7 +203,7 @@ def rnn(stock):# %%
     realStockPrice = dataTest['Close'].values #convert to numpy to train RNN
     newTest["Close"] = newTest['Close'].shift(1)
     trainingSet = newTest.iloc[:,0:numberOfFeatures].values #convert to numpy to train RNN
-    realStockPrice = realStockPrice[window-shift:]
+    realStockPrice = realStockPrice[window+leftshift:]
 
     # %% [markdown]
     # ## Predict price
@@ -227,29 +235,36 @@ def rnn(stock):# %%
     plt.xlabel('Time')
     plt.ylabel("Price")
     plt.legend()
-    plt.savefig('graphs/{}.png'.format(stock))
+    plt.savefig('Graphs-Testing/{}-{}-{}.png'.format(stock,layer1,layer2))
     plt.figure()
 
-    # %%
+    MSE = mean_squared_error(realStockPrice,predictedPrice)
     stocksOwned = {}
-    startingValue = 500_000/505
-    liquidValue = startingValue
-
+    liquidValue = 500000/505
+    startingValue = liquidValue
+    sold = 0
     for i in range(len(predictedPrice)):
         if realStockPrice[i] < predictedPrice[i] and 'GOOGL' not in stocksOwned:
-            stocksOwned['GOOGL'] = (realStockPrice[i], liquidValue/realStockPrice[i])
-            liquidValue -= liquidValue/realStockPrice[i] * realStockPrice[i]
+            stocksOwned['GOOGL'] = (
+                realStockPrice[i], liquidValue/realStockPrice[i])
+            liquidValue -= liquidValue / \
+                realStockPrice[i] * realStockPrice[i]
         elif 'GOOGL' in stocksOwned and stocksOwned['GOOGL'][0] < realStockPrice[i]:
             liquidValue += stocksOwned['GOOGL'][1] * realStockPrice[i]
-            stocksOwned.pop('GOOGL')
+            percentGain = (
+                realStockPrice[i] - stocksOwned['GOOGL'][0]) / stocksOwned['GOOGL'][0]
+            sold += 1
 
-    profit = (liquidValue - startingValue)
-    profitPercentage = (profit/startingValue)*100
-    print("Profit: ${}".format(round(profit,2)))
-    print("ROI: {}%".format(round(profitPercentage,2)))
-    held = (((realStockPrice[-1] - realStockPrice[0]) / realStockPrice[0]) * 100)
-    print("Held: {}%".format(round(held,2)))
-    return profit
+            stocksOwned.pop('GOOGL')
+        if 'GOOGL' in stocksOwned and i == len(predictedPrice) - 1:
+            liquidValue += stocksOwned['GOOGL'][1] * realStockPrice[i]
+            percentGain = (
+                realStockPrice[i] - stocksOwned['GOOGL'][0]) / stocksOwned['GOOGL'][0]
+            stocksOwned.pop('GOOGL')
+            sold += 1
+    profit = liquidValue - startingValue
+    return MSE
+
 
 
 
@@ -260,8 +275,43 @@ data_path = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/Datasets/30y_stock
 for (dirpath, dirnames, filenames) in walk(data_path):
     companies.extend(filenames)
     break 
-for company in companies:
-    print("{}\nTraining Company: {}\n{}".format(padding,company[:-4],padding))
-    stocks[company] = rnn(company[:-4])
-    profit += stocks[company]
-print(profit)
+companyLayers = {}
+for company in tqdm(companies):
+    company = company[:-4]
+    print(padding)
+    print(company)
+    mse = float('inf')
+    layers = ()
+    for layer1 in range(1, 21): 
+        if company is 'CSCO':
+            layers = (10, 1)
+            break
+        tempMse = rnn(company, layer1 = layer1, layer2 = 1)
+        if tempMse < mse:
+            layers = (layer1, 1)
+            mse = tempMse
+        print(tempMse)
+    layer1 = layers[0]
+    for layer2 in range(1, 21):
+        tempMse = rnn(company, layer1=layer1, layer2=layer2)
+        if tempMse < mse:
+            layers = (layer1, layer2)
+            mse = tempMse
+        print(tempMse)
+    layer1, layer2 = layers
+    os.rename("Models-Testing/{}-{}-{}-model.json".format(company, layer1, layer2), "Best/Models/{}-model.json".format(company))
+    os.rename('Graphs-Testing/{}-{}-{}.png'.format(company, layer1, layer2),"Best/Graphs/{}.png".format(company))
+    dir = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/IshanCode/Models-Testing"
+    for f in os.listdir(dir):
+        path = os.path.join(dir, f)
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            os.remove(path)
+    dir = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/IshanCode/Graphs-Testing"
+    for f in os.listdir(dir):
+        path = os.path.join(dir, f)
+        try:
+            shutil.rmtree(path)
+        except OSError:
+            os.remove(path)
