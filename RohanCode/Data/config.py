@@ -10,6 +10,9 @@ raw_directory = "30y_stock_csvs"
 # File where cleaned stocks data will be stored.
 clean_directory = "clean_30y_stock_csvs"
 
+#File to add all filters to df
+filter_directory = "filter_30y_stock_csvs"
+
 # Data for training/testing file:
 mother_file = "mother_file.csv"
 
