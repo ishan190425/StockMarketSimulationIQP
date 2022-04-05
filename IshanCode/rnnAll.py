@@ -6,6 +6,7 @@
 
 
 # %%
+from datetime import datetime, timedelta
 import imp
 import absl.logging
 import warnings
@@ -35,11 +36,14 @@ import os
 from tqdm import tqdm
 
 
-
 padding = "--------------------------------"
 # %% [markdown]
 # ## Import training set
-def rnn(stock,lr=0.01, layer1 = 50, layer2 = 50, layer3 = 50, layer4 = 50):# %%
+
+
+def rnn(stock, startDate="1982-3-12", endDate="2022-02-1", lr=0.01, layer1=50, layer2=50, layer3=50, layer4=50):  # %%
+    startDate = datetime.strptime(str(startDate), "%Y-%m-%d")
+    endDate = datetime.strptime(str(endDate), "%Y-%m-%d")
     rsiPeriod = 14
     adxPeriod = 14
     bollingerBandWindow = 20
@@ -278,6 +282,8 @@ for (dirpath, dirnames, filenames) in walk(data_path):
 companyLayers = {}
 for company in tqdm(companies):
     company = company[:-4]
+    if os.path.exists("Best/Graphs/{}.png".format(company)):
+        continue
     print(padding)
     print(company)
     mse = float('inf')
@@ -287,18 +293,26 @@ for company in tqdm(companies):
             layers = (10, 1)
             break
         tempMse = rnn(company, layer1 = layer1, layer2 = 1)
+        if tempMse == 0:
+            continue
         if tempMse < mse:
             layers = (layer1, 1)
             mse = tempMse
         print(tempMse)
+    if not layers:
+        continue
     layer1 = layers[0]
     for layer2 in range(1, 21):
         tempMse = rnn(company, layer1=layer1, layer2=layer2)
+        if tempMse == 0:
+            continue
         if tempMse < mse:
             layers = (layer1, layer2)
             mse = tempMse
         print(tempMse)
     layer1, layer2 = layers
+    if mse == float('inf'):
+        continue
     os.rename("Models-Testing/{}-{}-{}-model.json".format(company, layer1, layer2), "Best/Models/{}-model.json".format(company))
     os.rename('Graphs-Testing/{}-{}-{}.png'.format(company, layer1, layer2),"Best/Graphs/{}.png".format(company))
     dir = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/IshanCode/Models-Testing"
@@ -315,3 +329,5 @@ for company in tqdm(companies):
             shutil.rmtree(path)
         except OSError:
             os.remove(path)
+
+# %%
