@@ -2,20 +2,27 @@
 
 import tensorflow
 from tensorflow.keras.preprocessing import timeseries_dataset_from_array
+import numpy
 from numpy import genfromtxt
 import argparse
 from tensorflow.keras.optimizers import SGD
 from config import *
+import seaborn
+import matplotlib.pyplot as plot
+import pandas
 
-training_accuracy_file = "training_accuracy.csv"
-testing_accuracy_file = "testing_accuracy.csv"
+training_accuracy_file = "training_accuracy_1.csv"
+testing_accuracy_file = "testing_accuracy_1.csv"
 batch_size = 128
-parameters_per_day = 5
-sequence_stride = 2 # Use every other dataset(Shift 2 days over)
+sampling_rate = 1
+parameters_per_day = 7
+sequence_stride = 1
 training_start_index = 0
-testing_start_index = 1 # Start on alternate than training.
+number_of_testing_weeks = 16
+number_of_testing_days = 5 * number_of_testing_weeks
 
 def split_training_and_testing_data():
+    print("number_of_testing_days = ", number_of_testing_days)
     global num_stocks
     global one_day_data_size
     print("Retrieving dataset from mother file")
@@ -28,28 +35,49 @@ def split_training_and_testing_data():
     labels = genfromtxt(labels_file, delimiter=',').flatten()
     labels_one_hot = tensorflow.keras.utils.to_categorical(labels, num_classes=num_stocks)
     print("About to assemble data set generators")
-    end_index = len(full_dataset) - 1
+    testing_end_index = len(full_dataset) - 1
+    training_end_index = testing_end_index - number_of_testing_days
+    testing_start_index = len(full_dataset) - number_of_testing_days - days_to_train_on
+    print("training_start_index = " + str(training_start_index))
+    print("training_end_index = " + str(training_end_index))
+    print("testing_start_index = " + str(testing_start_index))
+    print("testing_end_index = " + str(testing_end_index))
     training_generator = timeseries_dataset_from_array(data=full_dataset,
                                                        targets=labels_one_hot,
                                                        sequence_length=days_to_train_on,
                                                        sequence_stride=sequence_stride,
-                                                       #sampling_rate=1, # Default is already 1
+                                                       sampling_rate=sampling_rate, # Default is 1
                                                        batch_size=batch_size, # Default is 128
-                                                       end_index=end_index,
+                                                       end_index=training_end_index,
                                                        start_index=training_start_index)
     print("Finish building training dataset generator")
     testing_generator = timeseries_dataset_from_array(data=full_dataset,
                                                       targets=labels_one_hot,
                                                       sequence_length=days_to_train_on,
                                                       sequence_stride=sequence_stride,
-                                                      #sampling_rate=1, # Default is already 1
+                                                      sampling_rate=sampling_rate, # Default is 1
                                                       batch_size=batch_size, # Default is 128
-                                                      end_index=end_index,
+                                                      end_index=testing_end_index,
+                                                      start_index=testing_start_index)
+    labels_one_hot += labels_one_hot[0]
+    profit_testing_generator = timeseries_dataset_from_array(data=full_dataset,
+                                                      targets=labels_one_hot,
+                                                      sequence_length=days_to_train_on,
+                                                      sequence_stride=sequence_stride,
+                                                      sampling_rate=sampling_rate, # Default is 1
+                                                      batch_size=1, # Default is 128
+                                                      #end_index=testing_end_index + 1,
                                                       start_index=testing_start_index)
     print("Finish building testing dataset generator")
     print("training_generator length = " + str(len(training_generator)))
     print("testing_generator length = " + str(len(testing_generator)))
-    return training_generator, testing_generator
+    #print("Here is the testing_generator")
+    #for row in testing_generator:
+    #    print(row)
+    #print("Here is the training_generator")
+    #for row in training_generator:
+    #    print(row)
+    return training_generator, testing_generator, profit_testing_generator
 
 def make_new_nn_model_1_hidden_layer():
     print("About to build model")
@@ -64,10 +92,8 @@ def make_new_nn_model_1_hidden_layer():
     print("Finished compiling")
     return nn_model
 
-def make_new_cnn_model():
+def make_new_cnn_model(convolution_parameters_per_day, convolution_parameters_per_30_days, learning_rate):
     print("About to build model")
-    convolution_parameters_per_day = (parameters_per_day // 2) + 1
-    convolution_parameters_per_30_days = (convolution_parameters_per_day // 2) + 1
     nn_model = tensorflow.keras.models.Sequential()
     nn_model.add(tensorflow.keras.Input(shape=(days_to_train_on, one_day_data_size, 1)))
     nn_model.add(tensorflow.keras.layers.Conv2D(filters=convolution_parameters_per_day, kernel_size=(1, parameters_per_day), strides=(1, parameters_per_day), activation='relu'))
@@ -78,49 +104,127 @@ def make_new_cnn_model():
     print("Finished building model")
     print(nn_model.summary())
     print("About to compile")
-    optimizer = SGD(lr=0.1)
+    print("learning_rate = ", str(learning_rate))
+    optimizer = SGD(learning_rate=learning_rate)
     nn_model.compile(optimizer=optimizer, loss='mse', metrics=['accuracy'], run_eagerly=True)
     print("Finished compiling")
     return nn_model
 
-#2 hidden layer idea:
-#75750 #Original dimensions
-#7600 #Dense
-#800 #Dense
-#505 #Softmax 1 hot
-
-def train_and_predict(epochs, nn_model, training_generator, testing_generator):
+def train_and_predict(epochs, nn_model, training_generator, testing_generator, profit_testing_generator):
     with open(training_accuracy_file, 'w') as training_handle:
         with open(testing_accuracy_file, 'w') as testing_handle:
             for i in range (1, epochs + 1):
                 nn_model.fit(training_generator, epochs=1, verbose=0)
                 _, training_accuracy = nn_model.evaluate(training_generator, verbose=0)
-                training_handle.write(str(training_accuracy) + ",")
+                training_handle.write(str(training_accuracy * 100.0) + ",")
                 training_handle.flush()
                 _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=0)
-                testing_handle.write(str(testing_accuracy) + ",")
+                testing_handle.write(str(testing_accuracy * 100.0) + ",")
                 testing_handle.flush()
                 print(".", end="", flush=True)
     _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=1)
     print('For Epochs = {}: Accuracy = {}'.format(epochs, testing_accuracy * 100.0))
+    starting_money = 100.0
+    money = starting_money
+    profit_testing_iterator = iter(profit_testing_generator)
+    next_day_set = profit_testing_iterator.get_next()
+    money_per_day_array = []
+    money_per_day_array.append(money)
+    percent_profit_per_day_array = []
+    list_of_symbols = pandas.read_csv('500_Stocks.csv')["Symbol"].to_numpy()
+    stock_bought_each_day_array = []
+    for index in range(1, len(profit_testing_generator) - 1):
+        previous_days_set = next_day_set
+        next_day_set = profit_testing_iterator.get_next()
+        
+        one_hot_predictions_array = nn_model.predict(previous_days_set[0], verbose=0)[0]
+        #print("One hot predictions array:")
+        #print(one_hot_predictions_array)
+        #print(len(one_hot_predictions_array))
+        best_stock_index = numpy.argmax(one_hot_predictions_array, axis=0)
+        print("Best stock index: " + str(best_stock_index))
+
+        next_day_data = next_day_set[0].numpy()[0][0]
+        #print(next_day_data)
+        #print(next_day_data[0])
+        #print(len(next_day_data))
+        #print(best_stock_index * parameters_per_day)
+        open_price = next_day_data[best_stock_index * parameters_per_day]
+        close_price = next_day_data[(best_stock_index * parameters_per_day) + 1]
+        money = (money / open_price) * close_price
+        money_per_day_array.append(money)
+        percent_profit_per_day_array.append(100 * ((close_price / open_price) - 1))
+        stock_bought_each_day_array.append(list_of_symbols[best_stock_index])
+    print("Starting Money: $" + str(starting_money))
+    print("Ending Money: $" + str(money))
+    print("Percent Profit: " + str(100 * ((money - starting_money) / starting_money)) + "%")
+    #graph_money_per_day(money_per_day_array)
+    #graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
+
+def graph_money_per_day(money_per_day_array):
+    seaborn.lineplot(data=money_per_day_array, marker="o")
+    plot.suptitle("Dollars Per Day", size = 24);
+    plot.ylabel("Dollars", size = 24)
+    plot.xlabel("Days", size = 24)
+    plot.ylim(0, 170)
+    plot.xlim(0, 80)
+    plot.show()
+
+def graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
+    percent_profit_stock_per_day_dataframe = pandas.DataFrame({
+        "percent_profit_per_day":percent_profit_per_day_array,
+        "stock_bought_each_day":stock_bought_each_day_array
+    })
+    percent_profit_stock_per_day_dataframe.index += 1
+    seaborn.lineplot(
+        data=percent_profit_stock_per_day_dataframe,
+        x=percent_profit_stock_per_day_dataframe.index,
+        y="percent_profit_per_day",
+    )
+    seaborn.scatterplot(
+        data=percent_profit_stock_per_day_dataframe,
+        x=percent_profit_stock_per_day_dataframe.index,
+        y="percent_profit_per_day",
+        hue="stock_bought_each_day",
+        marker="o"
+    )
+    plot.suptitle("Percent Profit Per Day", size = 24);
+    plot.ylabel("Percent Profit", size = 24)
+    plot.xlabel("Days", size = 24)
+    plot.xlim(0, 80)
+    plot.legend(fontsize=17)
+    plot.show()
     
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', default = 100)
+    parser.add_argument('--epochs', default = 0)
     parser.add_argument('--model_file', default = None)
     parser.add_argument('--save_to_file', default = None)
+    parser.add_argument('--convolution_parameters_per_day', default = 5)
+    parser.add_argument('--convolution_parameters_per_30_days', default = 8)
+    parser.add_argument('--learning_rate', default = 0.02)
+    parser.add_argument('--accuracy_files_suffix', default = None)
     args = parser.parse_args()
     epochs = int(args.epochs)
     model_file = args.model_file
     save_to_file = args.save_to_file
-    training_generator, testing_generator = split_training_and_testing_data()
+    accuracy_files_suffix = args.accuracy_files_suffix
+    if None != accuracy_files_suffix:
+        global training_accuracy_file
+        global testing_accuracy_file
+        training_accuracy_file = "training_accuracy_" + accuracy_files_suffix + ".csv"
+        testing_accuracy_file = "testing_accuracy_" + accuracy_files_suffix + ".csv"
+    training_generator, testing_generator, profit_testing_generator = split_training_and_testing_data()
     if None == model_file:
         print("Making new model")
-        nn_model = make_new_cnn_model()
+        convolution_parameters_per_day = int(args.convolution_parameters_per_day)
+        convolution_parameters_per_30_days = int(args.convolution_parameters_per_30_days)
+        learning_rate = float(args.learning_rate)
+        nn_model = make_new_cnn_model(convolution_parameters_per_day, convolution_parameters_per_30_days, learning_rate)
     else:
         print("Making model from file: " + model_file)
         nn_model = tensorflow.keras.models.load_model(model_file)
-    train_and_predict(epochs, nn_model, training_generator, testing_generator)
+    train_and_predict(epochs, nn_model, training_generator, testing_generator, profit_testing_generator)
     if None != save_to_file:
         print("Saving model to file: " + save_to_file)
         nn_model.save(save_to_file)
