@@ -136,7 +136,7 @@ def rnn(stock, startDate="1982-3-12", endDate="2022-02-1", lr=0.01, layer1=50, l
 
     # %% [markdown]HHhH
     model = "Best/Models/{}-model.json".format(stock)
-    if False:
+    if os.path.exists(model):
         regressor=tf.keras.models.load_model(model)
         print("loaded")
    
@@ -243,31 +243,33 @@ def rnn(stock, startDate="1982-3-12", endDate="2022-02-1", lr=0.01, layer1=50, l
     plt.figure()
 
     MSE = mean_squared_error(realStockPrice,predictedPrice)
+
     stocksOwned = {}
     liquidValue = 500000/505
     startingValue = liquidValue
     sold = 0
+
     for i in range(len(predictedPrice)):
-        if realStockPrice[i] < predictedPrice[i] and 'GOOGL' not in stocksOwned:
-            stocksOwned['GOOGL'] = (
+        if realStockPrice[i] < predictedPrice[i] and stock not in stocksOwned:
+            stocksOwned[stock] = (
                 realStockPrice[i], liquidValue/realStockPrice[i])
             liquidValue -= liquidValue / \
                 realStockPrice[i] * realStockPrice[i]
-        elif 'GOOGL' in stocksOwned and stocksOwned['GOOGL'][0] < realStockPrice[i]:
-            liquidValue += stocksOwned['GOOGL'][1] * realStockPrice[i]
+        elif stock in stocksOwned and stocksOwned[stock][0] < realStockPrice[i]:
+            liquidValue += stocksOwned[stock][1] * realStockPrice[i]
             percentGain = (
-                realStockPrice[i] - stocksOwned['GOOGL'][0]) / stocksOwned['GOOGL'][0]
+                realStockPrice[i] - stocksOwned[stock][0]) / stocksOwned[stock][0]
             sold += 1
 
-            stocksOwned.pop('GOOGL')
-        if 'GOOGL' in stocksOwned and i == len(predictedPrice) - 1:
-            liquidValue += stocksOwned['GOOGL'][1] * realStockPrice[i]
+            stocksOwned.pop(stock)
+        if stock in stocksOwned and i == len(predictedPrice) - 1:
+            liquidValue += stocksOwned[stock][1] * realStockPrice[i]
             percentGain = (
-                realStockPrice[i] - stocksOwned['GOOGL'][0]) / stocksOwned['GOOGL'][0]
-            stocksOwned.pop('GOOGL')
+                realStockPrice[i] - stocksOwned[stock][0]) / stocksOwned[stock][0]
+            stocksOwned.pop(stock)
             sold += 1
     profit = liquidValue - startingValue
-    return MSE
+    return profit,mse
 
 
 
@@ -289,21 +291,18 @@ for company in tqdm(companies):
     mse = float('inf')
     layers = ()
     for layer1 in range(1, 21): 
-        if company is 'CSCO':
-            layers = (10, 1)
-            break
-        tempMse = rnn(company, layer1 = layer1, layer2 = 1)
+        _, tempMse = rnn(company, layer1 = layer1, layer2 = 1)
         if tempMse == 0:
             continue
         if tempMse < mse:
             layers = (layer1, 1)
             mse = tempMse
-        print(tempMse)
+
     if not layers:
         continue
     layer1 = layers[0]
     for layer2 in range(1, 21):
-        tempMse = rnn(company, layer1=layer1, layer2=layer2)
+        _, tempMse = rnn(company, layer1=layer1, layer2=layer2)
         if tempMse == 0:
             continue
         if tempMse < mse:
@@ -313,9 +312,11 @@ for company in tqdm(companies):
     layer1, layer2 = layers
     if mse == float('inf'):
         continue
+
     os.rename("Models-Testing/{}-{}-{}-model.json".format(company, layer1, layer2), "Best/Models/{}-model.json".format(company))
     os.rename('Graphs-Testing/{}-{}-{}.png'.format(company, layer1, layer2),"Best/Graphs/{}.png".format(company))
     dir = "/Users/ishan/Coding/Wpi/StockMarketSimulationIQP/IshanCode/Models-Testing"
+    
     for f in os.listdir(dir):
         path = os.path.join(dir, f)
         try:
