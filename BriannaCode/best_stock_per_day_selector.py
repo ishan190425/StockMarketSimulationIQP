@@ -125,7 +125,7 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
                 print(".", end="", flush=True)
     _, testing_accuracy = nn_model.evaluate(testing_generator, verbose=1)
     print('For Epochs = {}: Accuracy = {}'.format(epochs, testing_accuracy * 100.0))
-    starting_money = 100.0
+    starting_money = 500_000#100.0
     money = starting_money
     profit_testing_iterator = iter(profit_testing_generator)
     next_day_set = profit_testing_iterator.get_next()
@@ -134,7 +134,7 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
     percent_profit_per_day_array = []
     list_of_symbols = pandas.read_csv('500_Stocks.csv')["Symbol"].to_numpy()
     stock_bought_each_day_array = []
-    for index in range(1, len(profit_testing_generator) - 1):
+    for index in range(1, len(profit_testing_generator)-1):
         previous_days_set = next_day_set
         next_day_set = profit_testing_iterator.get_next()
         
@@ -169,19 +169,30 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
     numpy_percent_profit_per_day_array = numpy.array(percent_profit_per_day_array)
     std_dev_of_negative_performers = numpy_percent_profit_per_day_array[numpy_percent_profit_per_day_array < 0]
     if 0 == len(std_dev_of_negative_performers):
-        print("The Sortino Ratio is not applicable since there were no negative performance days")
+        print("The Sortino Ratio is not applicable since there were no negative performance days.")
     else:
         sortino_ratio = ((trading_days_per_year ** 0.5)
                          * numpy.mean(percent_profit_per_day_array) / numpy.std(std_dev_of_negative_performers))
         print("Sortino Ratio: " + str(sortino_ratio))
 
 def graph_money_per_day(money_per_day_array):
-    seaborn.lineplot(data=money_per_day_array, marker="o")
-    plot.suptitle("Dollars Per Day", size = 24);
+    money_per_day_line_graph(money_per_day_array)
+    original_index_array = [1, 2, 3, 4, 5]
+    index_array = original_index_array
+    for i in range (1, number_of_testing_weeks + 1):
+        for j in range(0, len(index_array)):
+            index_array[j]= original_index_array[j] * i
+        array_portion = money_per_day_array[1:][5 * (i - 1):5 * i]
+        money_per_day_line_graph(array_portion, "Week " + str(i) + " ", index_array)
+
+def money_per_day_line_graph(money_per_day_array, title_prefix="", index_array=None):
+    if None == index_array:
+        seaborn.lineplot(data=money_per_day_array, marker="o")
+    else:
+        seaborn.lineplot(x=index_array, y=money_per_day_array, marker="o")
+    plot.suptitle(title_prefix + "Dollars Per Day", size = 24);
     plot.ylabel("Dollars", size = 24)
     plot.xlabel("Days", size = 24)
-    plot.ylim(0, 170)
-    plot.xlim(0, number_of_testing_days)
     plot.show()
 
 def graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
@@ -190,20 +201,21 @@ def graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_b
         "stock_bought_each_day":stock_bought_each_day_array
     })
     percent_profit_stock_per_day_dataframe.index += 1
-    print(percent_profit_stock_per_day_dataframe.to_string())
-    seaborn.barplot(
-        data=percent_profit_stock_per_day_dataframe,
-        x=percent_profit_stock_per_day_dataframe.index,
-        y="percent_profit_per_day",
-        hue="stock_bought_each_day",
-        dodge=False
-    )
-    plot.suptitle("Percent Profit Per Day", size = 24);
-    plot.ylabel("Percent Profit", size = 24)
-    plot.xlabel("Days", size = 24)
-    #plot.xlim(0, number_of_testing_days)
-    plot.legend(fontsize=17)
-    plot.show()
+    for i in range (1, number_of_testing_weeks + 1):
+        dataframe_portion = percent_profit_stock_per_day_dataframe[5 * (i - 1):5 * i]
+        print(dataframe_portion.to_string())
+        seaborn.barplot(
+            data=dataframe_portion,
+            x=dataframe_portion.index,
+            y="percent_profit_per_day",
+            hue="stock_bought_each_day",
+            dodge=False
+        )
+        plot.suptitle("Week " + str(i) + " Percent Profit Per Day", size = 24);
+        plot.ylabel("Percent Profit", size = 24)
+        plot.xlabel("Days", size = 24)
+        plot.legend(fontsize=17)
+        plot.show()
 
 def graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
     percent_profit_stock_per_day_dataframe = pandas.DataFrame({
