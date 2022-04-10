@@ -19,7 +19,7 @@ parameters_per_day = 7
 sequence_stride = 1
 training_start_index = 0
 number_of_testing_weeks = 8#16
-number_of_testing_days = 5 * number_of_testing_weeks
+number_of_testing_days = 5 * number_of_testing_weeks + 1
 trading_days_per_year = 252
 
 def split_training_and_testing_data():
@@ -159,21 +159,21 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
     print("Starting Money: $" + str(starting_money))
     print("Ending Money: $" + str(money))
     print("Percent Profit: " + str(100 * ((money - starting_money) / starting_money)) + "%")
+    graph_money_per_day(money_per_day_array)
+    graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
+    #graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
 
     sharpe_ratio = ((trading_days_per_year ** 0.5)
                     * numpy.mean(percent_profit_per_day_array) / numpy.std(percent_profit_per_day_array))
     print("Sharpe Ratio: " + str(sharpe_ratio))
     numpy_percent_profit_per_day_array = numpy.array(percent_profit_per_day_array)
     std_dev_of_negative_performers = numpy_percent_profit_per_day_array[numpy_percent_profit_per_day_array < 0]
-    if 0 == std_dev_of_negative_performers:
-        print("The Sortino Ratio is not aplicable since there were no negative performance days")
+    if 0 == len(std_dev_of_negative_performers):
+        print("The Sortino Ratio is not applicable since there were no negative performance days")
     else:
         sortino_ratio = ((trading_days_per_year ** 0.5)
-                         * numpy.mean(percent_profit_per_day_array) / std_dev_of_negative_performers.std)
+                         * numpy.mean(percent_profit_per_day_array) / numpy.std(std_dev_of_negative_performers))
         print("Sortino Ratio: " + str(sortino_ratio))
-
-        #graph_money_per_day(money_per_day_array)
-    #graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
 
 def graph_money_per_day(money_per_day_array):
     seaborn.lineplot(data=money_per_day_array, marker="o")
@@ -181,7 +181,28 @@ def graph_money_per_day(money_per_day_array):
     plot.ylabel("Dollars", size = 24)
     plot.xlabel("Days", size = 24)
     plot.ylim(0, 170)
-    plot.xlim(0, 80)
+    plot.xlim(0, number_of_testing_days)
+    plot.show()
+
+def graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
+    percent_profit_stock_per_day_dataframe = pandas.DataFrame({
+        "percent_profit_per_day":percent_profit_per_day_array,
+        "stock_bought_each_day":stock_bought_each_day_array
+    })
+    percent_profit_stock_per_day_dataframe.index += 1
+    print(percent_profit_stock_per_day_dataframe.to_string())
+    seaborn.barplot(
+        data=percent_profit_stock_per_day_dataframe,
+        x=percent_profit_stock_per_day_dataframe.index,
+        y="percent_profit_per_day",
+        hue="stock_bought_each_day",
+        dodge=False
+    )
+    plot.suptitle("Percent Profit Per Day", size = 24);
+    plot.ylabel("Percent Profit", size = 24)
+    plot.xlabel("Days", size = 24)
+    #plot.xlim(0, number_of_testing_days)
+    plot.legend(fontsize=17)
     plot.show()
 
 def graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
@@ -205,7 +226,7 @@ def graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each
     plot.suptitle("Percent Profit Per Day", size = 24);
     plot.ylabel("Percent Profit", size = 24)
     plot.xlabel("Days", size = 24)
-    plot.xlim(0, 80)
+    plot.xlim(0, number_of_testing_days)
     plot.legend(fontsize=17)
     plot.show()
     
