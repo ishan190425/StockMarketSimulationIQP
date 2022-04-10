@@ -18,8 +18,9 @@ sampling_rate = 1
 parameters_per_day = 7
 sequence_stride = 1
 training_start_index = 0
-number_of_testing_weeks = 16
+number_of_testing_weeks = 8#16
 number_of_testing_days = 5 * number_of_testing_weeks
+trading_days_per_year = 252
 
 def split_training_and_testing_data():
     print("number_of_testing_days = ", number_of_testing_days)
@@ -158,7 +159,20 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
     print("Starting Money: $" + str(starting_money))
     print("Ending Money: $" + str(money))
     print("Percent Profit: " + str(100 * ((money - starting_money) / starting_money)) + "%")
-    #graph_money_per_day(money_per_day_array)
+
+    sharpe_ratio = ((trading_days_per_year ** 0.5)
+                    * numpy.mean(percent_profit_per_day_array) / numpy.std(percent_profit_per_day_array))
+    print("Sharpe Ratio: " + str(sharpe_ratio))
+    numpy_percent_profit_per_day_array = numpy.array(percent_profit_per_day_array)
+    std_dev_of_negative_performers = numpy_percent_profit_per_day_array[numpy_percent_profit_per_day_array < 0]
+    if 0 == std_dev_of_negative_performers:
+        print("The Sortino Ratio is not aplicable since there were no negative performance days")
+    else:
+        sortino_ratio = ((trading_days_per_year ** 0.5)
+                         * numpy.mean(percent_profit_per_day_array) / std_dev_of_negative_performers.std)
+        print("Sortino Ratio: " + str(sortino_ratio))
+
+        #graph_money_per_day(money_per_day_array)
     #graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
 
 def graph_money_per_day(money_per_day_array):

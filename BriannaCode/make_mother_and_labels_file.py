@@ -149,9 +149,9 @@ def fill_mother_file():
     print("\nRows read for mother file: " + str(rows_read))
         
 def main():
-    print("Filling in the mother file")
-    fill_mother_file()
-    #print("Filling in the labels file")
-    #fill_labels_file()
+    #print("Filling in the mother file")
+    #fill_mother_file()
+    print("Filling in the labels file")
+    fill_labels_file()
 
 main()
