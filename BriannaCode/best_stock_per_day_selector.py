@@ -19,7 +19,7 @@ parameters_per_day = 7
 sequence_stride = 1
 training_start_index = 0
 number_of_testing_weeks = 8#16
-number_of_testing_days = 5 * number_of_testing_weeks + 1
+number_of_testing_days = 5 * number_of_testing_weeks #+ 1
 trading_days_per_year = 252
 
 def split_training_and_testing_data():
@@ -153,6 +153,11 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
         open_price = next_day_data[best_stock_index * parameters_per_day]
         close_price = next_day_data[(best_stock_index * parameters_per_day) + 1]
         money = (money / open_price) * close_price
+        if 6 == index: # SPECIFICALLY FOR THE 2/14 - 3/8 TESTING RANGE
+            # Add in an empty entry for president's day (stock market was closed).
+            money_per_day_array.append(money_per_day_array[-1])
+            percent_profit_per_day_array.append(0)
+            stock_bought_each_day_array.append("NO STOCK TRADING")            
         money_per_day_array.append(money)
         percent_profit_per_day_array.append(100 * ((close_price / open_price) - 1))
         stock_bought_each_day_array.append(list_of_symbols[best_stock_index])
@@ -160,7 +165,7 @@ def train_and_predict(epochs, nn_model, training_generator, testing_generator, p
     print("Ending Money: $" + str(money))
     print("Percent Profit: " + str(100 * ((money - starting_money) / starting_money)) + "%")
     graph_money_per_day(money_per_day_array)
-    graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
+    #graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
     #graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array)
 
     sharpe_ratio = ((trading_days_per_year ** 0.5)
@@ -180,8 +185,8 @@ def graph_money_per_day(money_per_day_array):
     original_index_array = [1, 2, 3, 4, 5]
     index_array = original_index_array
     for i in range (1, number_of_testing_weeks + 1):
-        for j in range(0, len(index_array)):
-            index_array[j]= original_index_array[j] * i
+        for j in range(1, len(index_array) + 1):
+            index_array[j - 1]= j + 5 * (i - 1)
         array_portion = money_per_day_array[1:][5 * (i - 1):5 * i]
         money_per_day_line_graph(array_portion, "Week " + str(i) + " ", index_array)
 
@@ -190,6 +195,7 @@ def money_per_day_line_graph(money_per_day_array, title_prefix="", index_array=N
         seaborn.lineplot(data=money_per_day_array, marker="o")
     else:
         seaborn.lineplot(x=index_array, y=money_per_day_array, marker="o")
+        plot.xticks(index_array)
     plot.suptitle(title_prefix + "Dollars Per Day", size = 24);
     plot.ylabel("Dollars", size = 24)
     plot.xlabel("Days", size = 24)
@@ -201,21 +207,25 @@ def graph_bar_chart_percent_profit_per_day(percent_profit_per_day_array, stock_b
         "stock_bought_each_day":stock_bought_each_day_array
     })
     percent_profit_stock_per_day_dataframe.index += 1
+    percent_profit_per_day_bar_chart(percent_profit_stock_per_day_dataframe)
     for i in range (1, number_of_testing_weeks + 1):
         dataframe_portion = percent_profit_stock_per_day_dataframe[5 * (i - 1):5 * i]
         print(dataframe_portion.to_string())
-        seaborn.barplot(
-            data=dataframe_portion,
-            x=dataframe_portion.index,
-            y="percent_profit_per_day",
-            hue="stock_bought_each_day",
-            dodge=False
-        )
-        plot.suptitle("Week " + str(i) + " Percent Profit Per Day", size = 24);
-        plot.ylabel("Percent Profit", size = 24)
-        plot.xlabel("Days", size = 24)
-        plot.legend(fontsize=17)
-        plot.show()
+        percent_profit_per_day_bar_chart(dataframe_portion, "Week " + str(i) + " ")
+
+def percent_profit_per_day_bar_chart(percent_profit_stock_per_day_dataframe, title_prefix=""):
+    seaborn.barplot(
+        data=percent_profit_stock_per_day_dataframe,
+        x=percent_profit_stock_per_day_dataframe.index,
+        y="percent_profit_per_day",
+        hue="stock_bought_each_day",
+        dodge=False
+    )
+    plot.suptitle(title_prefix + "Percent Profit Per Day", size = 24);
+    plot.ylabel("Percent Profit", size = 24)
+    plot.xlabel("Days", size = 24)
+    plot.legend(fontsize=17)
+    plot.show()
 
 def graph_percent_profit_per_day(percent_profit_per_day_array, stock_bought_each_day_array):
     percent_profit_stock_per_day_dataframe = pandas.DataFrame({
