@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from datetime import datetime,timedelta
-from sklearn.preprocessing import min_max_scaler
+from sklearn.preprocessing import MinMaxScaler
 from math import floor
 import pandas as pd
 from tqdm import tqdm
@@ -23,186 +23,185 @@ from helperFunctions import *
 import helperFunctions
 
 
-
-
 companies = get_companies()
-companies_weighted, weight = get_companies_weighted()
+companies_weighted, weights_per_company = get_companies_weighted()
 
 
+def evaluvate_company(stock, start_date, end_date, starting_capital, plot= False, shift = 1, final = False):
+    model = "Best/Models/{}-model.json".format(stock)
 
+    real_stock_price, _, technical_indicators, number_of_features = get_data(
+        stock, start_date, end_date, variables_to_include)
 
-def company(stock,start_date, end_date,starting_capital,plot = False, s = 1):
-    model = "best/models/{}-model.json".format(stock)
+    if not number_of_features:
+        return 0, 0, 0, 0, 0
+    # convert to numpy to train RNN
+    indicators = technical_indicators.values
+    prices = real_stock_price.reshape(-1, 1)
 
-    start = start_date
-    
-   
-    variables_to_include = ['close', 'volume',"rsi", "adx", "fastd", "fastk", "macd"]
-    
-    _, data, new_train,number_of_features = get_data(stock,start_date,end_date,variables_to_include)
-    
-    training_set = new_train.iloc[:,0:number_of_features].values #convert to numpy to train rnn
-    y_set = data.astype(float).values.reshape(-1, 1)
+    # ## Feature Scaling
 
-    # ## feature scaling
+    # Use normalization x - min(x) / max(min) - min(x)
+    indicator_scaler = MinMaxScaler(feature_range=(0, 1))  # all values between 0 and 1
+    price_scaler = MinMaxScaler(feature_range=(0, 1))
+    _ = price_scaler.fit_transform(prices)
+    _ = indicator_scaler.fit_transform(indicators)
 
-    # use normalization x - min(x) / max(min) - min(x)
-    sc = min_max_scaler(feature_range=(0,1)) # all values between 0 and 1
-    y_scaler = min_max_scaler(feature_range=(0,1))
-    _ = y_scaler.fit_transform(y_set)
-    _ = sc.fit_transform(training_set)
+    price_predictor = tf.keras.models.load_model(model)
 
-    regressor=tf.keras.models.load_model(model)
-    
-    real_stock_price,_,new_test,number_of_features = get_data(stock,start_date,end_date,variables_to_include) #convert to numpy to train rnn
-    
-    x_test = convert_to_numpy(new_test, number_of_features, sc)
-    
-    if not len(x_test):
-        return 0,0,0,0,0
-    
-    predicted_price, real_stock_price = get_predictions(regressor,x_test,real_stock_price, y_scaler, s)
+    indciators_as_numpy = convert_to_numpy(technical_indicators, number_of_features, indicator_scaler)
+
+    if not len(indciators_as_numpy):
+        return 0, 0, 0, 0, 0
+
+    predicted_price, real_stock_price = get_predictions(
+        price_predictor, indciators_as_numpy, real_stock_price, price_scaler, shift)
     # %% [markdown]
-    # ## predict price
+    # ## Predict price
 
     profit_series, daily_returns, loss, profit, buy, sold = calculate_profit(
         starting_capital, predicted_price, real_stock_price)
-    
-    
+
     if plot:
-        plot_data(stock, real_stock_price, predicted_price, buy, profit_series, loss)
+        plot_data(stock, real_stock_price, predicted_price,
+                  buy, profit_series, loss, final=final)
 
-    
-    sharpe_ratio, sortino_ratio, calmer_ratio = calculate_ratios(daily_returns, start, end_date)
-    
-    
+    sharpe_ratio, sortino_ratio, calmer_ratio = calculate_ratios(
+        daily_returns, start_date, end_date)
 
-    return profit,sharpe_ratio,sortino_ratio,calmer_ratio,sold
-
-
-# in[4]:
+    return profit, sharpe_ratio, sortino_ratio, calmer_ratio, sold
 
 
-def eval(start_date="1982-3-12", end_date="2022-02-1",weighted = false, companies = companies, s = 1):
-    start_date = datetime.strptime(str(start_date), "%y-%m-%d")
-    end_date = datetime.strptime(str(end_date), "%y-%m-%d")
-    start_date_threshold = datetime.strptime("1982-3-12", "%y-%m-%d")
+def evaluvate_portfolio_for_profit_and_ratios(start_date="1982-3-12", end_date="2022-02-1", weighted=False, companies=companies, shift=1):
+    start_date = datetime.strptime(str(start_date), "%Y-%m-%d")
+    end_date = datetime.strptime(str(end_date), "%Y-%m-%d")
+    startDateThreshold = datetime.strptime("1982-3-12", "%Y-%m-%d")
     spstart = start_date
 
-    if start_date_threshold > start_date:
-        spstart = start_date_threshold
+    if startDateThreshold > start_date:
+        spstart = startDateThreshold
     profit = 0
 
     with hidden_prints():
-        sp500 = yf.download('^gspc',spstart,end_date)
+        sp500 = yf.download('^GSPC', spstart, end_date)
 
-    profit_sp500_percentage = ((sp500['close'][-1] - sp500['close'][0])/sp500['close'][0])*100
-    profit_sp500 = (500_000) * (profit_sp500_percentage/100)
-
+    try:
+        profitsp500percentage = (
+            (sp500['Close'][-1] - sp500['Close'][0])/sp500['Close'][0])*100
+        profitsp500 = (500_000) * (profitsp500percentage/100)
+    except:
+        profitsp500percentage = -1
+        profitsp500 = -1
     profit = 0
     sharpe_ratio = []
     sortino_ratio = []
     calmer_ratio = []
+    profits = {}
 
     top_stock = ""
     max_profit = float('-inf')
-    lowest_stock = ""
+    worst_stock = ""
     min_profit = float('inf')
 
     index = 0
-    sold = 0
+    amount_of_times_sold = 0
     value = 500_000
 
     for i in tqdm(companies):
-        #with hidden_prints():
+        #with HiddenPrints():
         index += 1
-    
 
-        if weighted:    
-            weight_c = weight[i]
-            starting_capital = 500_000 * weight_c
-            profit_c, sharperatio_c, sortino_ratio_c, calmer_ratio_c,sold_c = company(i, start_date, end_date, starting_capital, s = s)
-            sharperatio_c *= weight_c
-            sortino_ratio_c *= weight_c
-            calmer_ratio_c *= weight_c
+        if weighted:
+            weight_company = weights_per_company[i]
+            starting_capital = 500_000 * weight_company
+            profit_c, sharperatio_c, sortino_ratio_c, calmer_ratio_c, amount_of_times_sold_c = evaluvate_company(
+                i, start_date, end_date, starting_capital, shift=shift, final=True, plot=False)
 
         else:
             i = i[:-4]
             print(i)
-            profit_c, sharperatio_c, sortino_ratio_c, calmer_ratio_c, sold_c = company(
-                i, start_date, end_date,s = s)
+            profit_c, sharperatio_c, sortino_ratio_c, calmer_ratio_c, amount_of_times_sold_c = evaluvate_company(
+                i, start_date, end_date, shift=shift)
 
         profit += profit_c
+        profits[profit_c] = i
         sharpe_ratio.append(sharperatio_c)
         sortino_ratio.append(sortino_ratio_c)
         calmer_ratio.append(calmer_ratio_c)
-        sold += sold_c
+        amount_of_times_sold += amount_of_times_sold_c
         if profit_c < min_profit:
             min_profit = profit_c
-            lowest_stock = i
+            worst_stock = i
 
         if profit_c > max_profit:
             max_profit = profit_c
             top_stock = i
-    
-    sharpe_ratio = pd.series(sharpe_ratio).dropna()
-    sortino_ratio = pd.series(sortino_ratio).dropna()
-    
-    profit_percentage = (profit/(value))*100
-    profit = round(profit,2)
-    profit_percentage = round(profit_percentage,2)
-    profit_sp500 = round(profit_sp500,2)
-    profit_sp500_percentage = round(profit_sp500_percentage,2)
-    sharpe_ratio = round((sharpe_ratio.mean()),2)
-    sortino_ratio = round((sortino_ratio.mean()),2)
-    calmer_ratio = 0
-    min_profit = round(min_profit,2)
-    max_profit = round(max_profit,2)
 
-    if profit_sp500 < profit:
+    sharpe_ratio = pd.Series(sharpe_ratio).dropna()
+    sortino_ratio = pd.Series(sortino_ratio).dropna()
+
+    profit_percentage = (profit/(value))*100
+    profit = round(profit, 2)
+    profit_percentage = round(profit_percentage, 2)
+    profitsp500 = round(profitsp500, 2)
+    profitsp500percentage = round(profitsp500percentage, 2)
+    sharpe_ratio = round((sharpe_ratio.mean()), 2)
+    sortino_ratio = round((sortino_ratio.mean()), 2)
+    calmer_ratio = 0
+    min_profit = round(min_profit, 2)
+    max_profit = round(max_profit, 2)
+
+    if profitsp500 < profit:
         beat = True
     else:
         beat = False
-        
 
-    print("start date: {}".format(str(start_date.date())))
-    print("end date: {}".format(str(end_date.date())))
-    print("profit: ${}".format(profit))
-    print("roi: {}%".format(profit_percentage))
-    print("most profitable stock: {}".format(top_stock))
-    print("profit for {}: ${}".format(top_stock,max_profit))
-    print("least profitable stock: {}".format(lowest_stock))
-    print("profit for {}: ${}".format(lowest_stock,min_profit))
-    print("profit s&p500: ${}".format(profit_sp500))
-    print("s&p500 roi: {}%".format(profit_sp500_percentage))
-    print("sharpe ratio: {}".format(sharpe_ratio))
-    print("sortino ratio: {}".format(sortino_ratio))
-    print("calmer ratio: {}".format(calmer_ratio))
-    print("traded {} times".format(sold))
+    print("Start Date: {}".format(str(start_date.date())))
+    print("End Date: {}".format(str(end_date.date())))
+    print("Profit: ${}".format(profit))
+    print("ROI: {}%".format(profit_percentage))
+    print("Most Profitable Stock: {}".format(top_stock))
+    print("Profit for {}: ${}".format(top_stock, max_profit))
+    print("Least Profitable Stock: {}".format(worst_stock))
+    print("Profit for {}: ${}".format(worst_stock, min_profit))
+    print("Profit S&P500: ${}".format(profitsp500))
+    print("S&P500 ROI: {}%".format(profitsp500percentage))
+    print("Sharpe Ratio: {}".format(sharpe_ratio))
+    print("Sortino Ratio: {}".format(sortino_ratio))
+    print("Calmer Ratio: {}".format(calmer_ratio))
+    print("Traded {} Times".format(amount_of_times_sold))
     return profit, beat
 
 
 
 
-total_wins = 0
-epochs = 10
-
-dates_eval = []
-with hidden_prints():
-    for i in tqdm(range(epochs)):
-        start_date, end_date = get_dates()
-        dates_eval.append(start_date)
-        _, win = eval(start_date = start_date, end_date = end_date, s = 3,weighted=True, companies=companies_weighted)
-        if win:
-            total_wins += 1
-
-if total_wins > 5:
-    print(f"you beat s&p500 {total_wins} times out of {epochs} times.")
-else:
-    print(f"s&p500 beat you {epochs-total_wins} times out of {epochs} times.")
-
-print(f'evaluvated on dates {dates_eval}')
 
 
 
 
+def main():
+
+    companies = get_companies()
+    
+    companies_weighted, weights_per_company = get_companies_weighted()
+    
+    total_wins = 0
+
+    epochs = 10
+
+    dates_eval = []
+    with hidden_prints():
+        for i in tqdm(range(epochs)):
+            start_date, end_date = get_dates()
+            dates_eval.append(start_date)
+            _, win = evaluvate_portfolio_for_profit_and_ratios(
+                start_date=start_date, end_date=end_date, shift=3, weighted=True, companies=companies_weighted)
+            if win:
+                total_wins += 1
+
+    if total_wins > 5:
+        print(f"you beat s&p500 {total_wins} times out of {epochs} times.")
+    else:
+        print(f"s&p500 beat you {epochs-total_wins} times out of {epochs} times.")
+
+    print(f'evaluvated on dates {dates_eval}')

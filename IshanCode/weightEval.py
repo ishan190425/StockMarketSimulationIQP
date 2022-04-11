@@ -29,19 +29,17 @@ import modelEval
 
 
 
-def company(stock, start_date, end_date, s=1):
+def evaluvate_company(stock, start_date, end_date, shift=1):
     starting_capital = 500_000
-    profit,sharperatio,sortino_ratio,calmer_ratio,sold = modelEval.company(stock,start_date, end_date,starting_capital,plot = False, s=s)
+    profit = modelEval.evaluvate_company(stock,start_date, end_date,starting_capital,plot = False, shift=shift)[0] #only care about profit
     profit_percent = (profit / starting_capital)
     return profit_percent
 
 
-# in[63]:
-
 
 def evaluvate_comapnies(debug = False):
     companies = get_companies()
-    weights = {}
+    profit_per_company = {}
     for idx, i in enumerate(companies):
         count = 0
         profit_avg = 0
@@ -50,88 +48,59 @@ def evaluvate_comapnies(debug = False):
             profit = -1
             while profit == -1:
                 start_date, end_date = get_dates()
-                profit = company(i,start_date,end_date)
+                profit = evaluvate_company(i,start_date,end_date)
             profit_avg += profit
             count += 1
         profit_avg = profit_avg/count
-        weights[i] = profit_avg
+        profit_per_company[i] = profit_avg
         if debug:
             print(f'number: {idx+1} company: {i} profit: {round(profit_avg * 100,2)}%')
-        weights = pd.data_frame(list(weights.items()), columns=["company", "profit"])
-    return weights
-
-
-# in[64]:
-
-
-weights = evaluvate_comapnies()
-
-
-# in[69]:
-
-
-def transform_weights(weights):
-    return MinMaxScaler().fit_transform(weights['profit'].values.reshape(-1, 1))
-
-weights['transformed profit'] = transform_weights(weights)
-
-
-# in[70]:
-
-
-weights.describe()
-
-
-# in[72]:
+        profit_per_company = pd.data_frame(list(profit_per_company.items()), columns=["company", "profit"])
+    return profit_per_company
 
 
 def normalize_weights(weights):
     sums = weights['transformed mse'].sum()
     return weights.apply(lambda row: normalize(
         row['transformed profit'], sums, len(weights)), axis=1)
-        
-weights['weight'] = normalize_weights(weights)
-weights.to_csv("output.csv", index=False)
-weights['weight'].sum()
+
+def transform_weights(weights):
+    return MinMaxScaler().fit_transform(weights['profit'].values.reshape(-1, 1))
+
+def main(plot = False):
+
+    weights = evaluvate_comapnies()
+
+    weights['transformed profit'] = transform_weights(weights)
+    weights['weight'] = normalize_weights(weights)
+
+    weights.to_csv("output.csv", index=False)
+    weights['weight'].sum()
 
 
-# in[73]:
+    new_weights = weights
+    new_weights = new_weights[new_weights['profit'] > 0.05] 
+
+    new_weights['transformed profit'] = transform_weights(new_weights)
+
+    new_weights['weight'] = normalize_weights(new_weights)
+
+    if plot:
+
+        new_weights.reset_index().plot.scatter(x='index', y='profit')
 
 
-new_weights = weights
-new_weights = new_weights[new_weights['profit'] > 0.05] 
-
-new_weights['transformed profit'] = transform_weights(new_weights)
-
-new_weights['weight'] = normalize_weights(new_weights)
 
 
-# in[74]:
+        new_weights['profit'].plot.density()
 
 
-new_weights.reset_index().plot.scatter(x='index', y='profit')
 
 
-# in[75]:
+        new_weights[new_weights['weight'] == new_weights['weight'].max()]
 
 
-new_weights['profit'].plot.density()
-
-
-# in[76]:
-
-
-new_weights[new_weights['weight'] == new_weights['weight'].max()]
-
-
-# in[52]:
-
-
-new_weights.to_csv("output_weights.csv", index=False)
-
-
-# in[ ]:
-
+    new_weights.to_csv("output_weights.csv", index=False)
 
 
 
