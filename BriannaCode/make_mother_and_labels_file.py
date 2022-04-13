@@ -110,23 +110,23 @@ def fill_labels_file():
 
 def fill_mother_file():
     stocks = pd.read_csv(stock_symbols_csv_file)
-    clean_csv_handle_array = []
+    CNN_formatted_csv_handle_array = []
     for symbol in stocks.Symbol:
-        path_to_clean_csv_file = clean_directory + "/" + symbol + ".csv"
-        clean_csv_handle = open(path_to_clean_csv_file, 'r')
-        current_row = clean_csv_handle.readline()
+        path_to_CNN_formatted_csv_file = CNN_formatted_directory + "/" + symbol + ".csv"
+        CNN_formatted_csv_handle = open(path_to_CNN_formatted_csv_file, 'r')
+        current_row = CNN_formatted_csv_handle.readline()
         if not current_row:
             print("Empty file not used: " + symbol)
             continue
-        clean_csv_handle_array.append(clean_csv_handle)
+        CNN_formatted_csv_handle_array.append(CNN_formatted_csv_handle)
     with open(mother_file, 'w') as mother_file_handle:
         done_writing_mother_file = False
         first_comma_index = None
         rows_read = 0
         while not done_writing_mother_file:
             first_file_read = False
-            for clean_csv_handle in clean_csv_handle_array:
-                current_row = clean_csv_handle.readline()
+            for CNN_formatted_csv_handle in CNN_formatted_csv_handle_array:
+                current_row = CNN_formatted_csv_handle.readline()
                 if not current_row:
                     done_writing_mother_file = True
                     break # Finished reading file.
@@ -140,18 +140,17 @@ def fill_mother_file():
                 mother_file_handle.write(current_row_data)
             if not done_writing_mother_file:
                 mother_file_handle.write("\n")
-                #print(current_row[8:10], end=",")
                 print(".", end="", flush=True)
                 rows_read += 1
             mother_file_handle.flush()
-    for clean_csv_handle in clean_csv_handle_array:
-        assert not clean_csv_handle.readline()
-        clean_csv_handle.close()
+    for CNN_formatted_csv_handle in CNN_formatted_csv_handle_array:
+        assert not CNN_formatted_csv_handle.readline()
+        CNN_formatted_csv_handle.close()
     print("\nRows read for mother file: " + str(rows_read))
         
 def main():
-    print("Filling in the mother file")
-    fill_mother_file()
+    #print("Filling in the mother file")
+    #fill_mother_file()
     print("Filling in the labels file")
     fill_labels_file()
 

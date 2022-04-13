@@ -57,7 +57,8 @@ def main():
             data = get_historical_quote_data(symbol)
             #print(data) # Uncomment this to see what the stored data will look like.
             data.to_csv(raw_directory + '/' + symbol + '.csv')
-        except:
+        except Exception as exception:
+            print(exception)
             row_string = ",".join(row.values)
             print("Could not fetch " + row_string)
             not_finished_file.write(row_string + "\n")
