@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Rathi
+    given-names: Ishan
+  - family-names: Roskind
+    given-names: Brianna
+  - family-names: Anand
+    given-names: Rohan
+title: "WPI IQP: Trading Simulation Code"
+version: 1.0.0
+date-released: 2022-05-03
+url: "https://github.com/BriannaRoskind/StockMarketSimulationIQP"
